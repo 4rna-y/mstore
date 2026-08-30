@@ -110,6 +110,30 @@ KillSignal=SIGTERM
 TimeoutStopSec=120
 ```
 
+## テスト
+
+```console
+$ nix develop
+$ gradle test
+```
+
+数秒で終わる。Minecraft は起動しない。
+
+- `SupervisorTest` — Paper の代わりに使い捨ての実行可能 jar (`StubServer`) を掴ませ、
+  「マーカーを残して落ちた」「異常終了した」に対する再起動の判断だけを見る。
+  スタブは起動時にマーカーを消すので、プラグインの bootstrap が予約を消費する動きも
+  再現できる。`stub.consumeMarker=false` にすれば「消費できない」壊れ方も作れる。
+- `OptionsTest` — 引数の解釈。パスが server-dir 基準で解決されること、
+  `paper-*.jar` の自動検出、矛盾した指定を弾くこと。
+
+実際に Paper と組み合わせた通し検証は wiah 側の `:e2e:e2eTest` が担当する。
+そちらが隣の checkout に対して `installDist` を回し、できたバイナリを使う。
+
+### 検証していないこと
+
+- key-value ストア (`SqliteKvStore` / `KvHttpServer`) の自動テストはまだ無い。
+- 実際の Minecraft サーバーとの組み合わせ (これは wiah 側の `:e2e` が見る)。
+
 ## ビルド
 
 ```console
