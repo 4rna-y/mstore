@@ -28,6 +28,7 @@ import org.junit.jupiter.api.io.TempDir;
 class SupervisorTest {
 
     private static final String MARKER = "plugins/WorldIsAlsoHardcore/pending-reset.txt";
+    private static final String RESTART_MARKER = "plugins/Plugman/pending-restart.txt";
 
     @TempDir
     Path serverDir;
@@ -70,6 +71,54 @@ class SupervisorTest {
         assertEquals(List.of("2"), StubServer.markerSeenAtRuns(serverDir),
                 "2回目の起動が予約を受け取っていない");
         assertFalse(Files.exists(serverDir.resolve(MARKER)), "消費されたはずの予約が残っている");
+    }
+
+    // ------------------------------------------------------------------ 再起動要求
+
+    @Test
+    @DisplayName("再起動要求が残っていれば正常終了でも起動し直し、要求は mstore が消す")
+    void restartsOnRestartMarkerAndConsumesIt() throws Exception {
+        // 1回目で再起動要求を書いて exit 0 (= Plugman が更新を置いて shutdown)、2回目は書かない。
+        int exit = new Supervisor(options().restartMarkerUntilRun(1).build()).run();
+
+        assertEquals(0, exit);
+        assertEquals(2, StubServer.runCount(serverDir), "再起動要求で起動し直していない");
+        assertEquals(List.of(), StubServer.restartSeenAtRuns(serverDir), "2回目の起動時に要求が残っている");
+        assertFalse(Files.exists(serverDir.resolve(RESTART_MARKER)));
+    }
+
+    @Test
+    @DisplayName("再起動要求はリセット予約に触らない")
+    void restartMarkerDoesNotTouchResetMarker() throws Exception {
+        int exit = new Supervisor(options().restartMarkerUntilRun(1).build()).run();
+
+        assertEquals(0, exit);
+        assertEquals(List.of(), StubServer.markerSeenAtRuns(serverDir), "リセット予約が無いのに見えている");
+    }
+
+    @Test
+    @DisplayName("再起動要求の後も短命終了が続いたら中止する")
+    void abortsWhenRestartRequestsLoop() throws Exception {
+        // 毎回要求を書いてすぐ終わる = 更新した jar で起動できていない、など。
+        int exit = new Supervisor(options().restartMarkerUntilRun(99).build()).run();
+
+        assertEquals(1, exit, "中止したことが分かる終了コードを返すべき");
+        assertEquals(2, StubServer.runCount(serverDir), "2回目で気付かず回り続けている");
+    }
+
+    @Test
+    @DisplayName("--restart-marker で指定した場所を見る")
+    void honoursCustomRestartMarkerPath() throws Exception {
+        String custom = "state/restart-please";
+        int exit = new Supervisor(options()
+                .restartMarker(custom)
+                .stubProperty("stub.restartMarker", custom)
+                .restartMarkerUntilRun(1)
+                .build()).run();
+
+        assertEquals(0, exit);
+        assertEquals(2, StubServer.runCount(serverDir), "既定の場所しか見ていない");
+        assertFalse(Files.exists(serverDir.resolve(custom)));
     }
 
     // ------------------------------------------------------------------ 異常終了
@@ -160,6 +209,7 @@ class SupervisorTest {
         private final List<String> javaArgs = new ArrayList<>();
         private Path jar = stubJar;
         private String marker = MARKER;
+        private String restartMarker = RESTART_MARKER;
         private long minHealthySeconds = 30;
         private int maxCrashRestarts = 3;
         private boolean restartOnCrash = true;
@@ -172,6 +222,15 @@ class SupervisorTest {
         OptionsBuilder marker(String value) {
             this.marker = value;
             return this;
+        }
+
+        OptionsBuilder restartMarker(String value) {
+            this.restartMarker = value;
+            return this;
+        }
+
+        OptionsBuilder restartMarkerUntilRun(int value) {
+            return stubProperty("stub.restartMarkerUntilRun", String.valueOf(value));
         }
 
         OptionsBuilder minHealthySeconds(long value) {
@@ -205,7 +264,7 @@ class SupervisorTest {
         Options build() {
             return new Options(
                     serverDir, jar, List.copyOf(javaArgs), serverDir.resolve(marker),
-                    minHealthySeconds, maxCrashRestarts,
+                    serverDir.resolve(restartMarker), minHealthySeconds, maxCrashRestarts,
                     /* restartDelaySeconds */ 0, restartOnCrash,
                     /* kvEnabled */ false, /* kvOnly */ false, "127.0.0.1", 0,
                     serverDir.resolve("mstore.db"), null, 1024);

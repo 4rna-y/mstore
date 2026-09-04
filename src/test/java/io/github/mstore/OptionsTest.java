@@ -39,8 +39,21 @@ class OptionsTest {
 
         assertEquals(serverDir.resolve("plugins/WorldIsAlsoHardcore/pending-reset.txt"),
                 options.markerFile());
+        assertEquals(serverDir.resolve("plugins/Plugman/pending-restart.txt"),
+                options.restartMarker());
         assertEquals(serverDir.resolve("mstore.db"), options.kvDb());
         assertEquals(serverDir.toAbsolutePath().normalize(), options.serverDir());
+    }
+
+    @Test
+    @DisplayName("--restart-marker も server-dir からの相対で解決する")
+    void resolvesRestartMarkerAgainstServerDir() throws IOException {
+        givenPaperJar("paper-1.jar");
+
+        Options options = parse("--server-dir", serverDir.toString(),
+                "--restart-marker", "state/restart");
+
+        assertEquals(serverDir.resolve("state/restart"), options.restartMarker());
     }
 
     @Test

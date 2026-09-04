@@ -24,6 +24,8 @@ import java.util.List;
  *   <tr><td>{@code stub.failUntilRun}</td>  <td>この回数目まで 1 で終了する (既定 0 = しない)</td></tr>
  *   <tr><td>{@code stub.consumeMarker}</td> <td>起動時にマーカーを消すか (既定 true)</td></tr>
  *   <tr><td>{@code stub.marker}</td>        <td>マーカーのパス。server-dir からの相対</td></tr>
+ *   <tr><td>{@code stub.restartMarkerUntilRun}</td><td>この回数目まで再起動要求を書き残す (既定 0 = 書かない)</td></tr>
+ *   <tr><td>{@code stub.restartMarker}</td> <td>再起動要求のパス。server-dir からの相対</td></tr>
  *   <tr><td>{@code stub.exit}</td>          <td>通常時の終了コード (既定 0)</td></tr>
  *   <tr><td>{@code stub.sleepMs}</td>       <td>終了前に待つ時間 (既定 0)</td></tr>
  * </table>
@@ -37,6 +39,10 @@ public final class StubServer {
     public static final String MARKER_SEEN_LOG = "stub-marker-seen.txt";
 
     private static final String DEFAULT_MARKER = "plugins/WorldIsAlsoHardcore/pending-reset.txt";
+    private static final String DEFAULT_RESTART_MARKER = "plugins/Plugman/pending-restart.txt";
+
+    /** 起動時に再起動要求が残っていた回を記録する。「mstore が消したか」の確認に使う。 */
+    public static final String RESTART_SEEN_LOG = "stub-restart-seen.txt";
 
     private StubServer() {
     }
@@ -57,6 +63,17 @@ public final class StubServer {
         if (run <= Integer.getInteger("stub.markerUntilRun", 0)) {
             Files.createDirectories(marker.toAbsolutePath().getParent());
             Files.writeString(marker, "# stub\n/nonexistent/world\n", StandardCharsets.UTF_8);
+        }
+
+        // Plugman 相当: 起動時に再起動要求が残っていたら記録する (消すのは mstore の仕事なので触らない)。
+        Path restartMarker = Path.of(System.getProperty("stub.restartMarker", DEFAULT_RESTART_MARKER));
+        if (Files.isRegularFile(restartMarker)) {
+            append(RESTART_SEEN_LOG, String.valueOf(run));
+        }
+        // 更新を置いた後の再起動要求。
+        if (run <= Integer.getInteger("stub.restartMarkerUntilRun", 0)) {
+            Files.createDirectories(restartMarker.toAbsolutePath().getParent());
+            Files.writeString(restartMarker, "# stub: plugin update\n", StandardCharsets.UTF_8);
         }
 
         long sleepMs = Long.getLong("stub.sleepMs", 0L);
@@ -87,6 +104,11 @@ public final class StubServer {
     /** 起動時にマーカーが在った回の一覧。 */
     public static List<String> markerSeenAtRuns(Path serverDir) throws IOException {
         return lines(serverDir.resolve(MARKER_SEEN_LOG));
+    }
+
+    /** 起動時に再起動要求が残っていた回の一覧。mstore が消していれば空。 */
+    public static List<String> restartSeenAtRuns(Path serverDir) throws IOException {
+        return lines(serverDir.resolve(RESTART_SEEN_LOG));
     }
 
     private static List<String> lines(Path path) throws IOException {

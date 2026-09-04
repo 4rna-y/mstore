@@ -12,6 +12,8 @@ import java.util.stream.Stream;
  * コマンドライン引数。
  *
  * @param jar 起動する Paper の jar。{@code --kv-only} のときだけ null。
+ * @param restartMarker Plugman などが「もう一度起動してほしい」と書き残す再起動要求ファイル。
+ *                      あれば終了コードを問わず起動し直す。消すのは mstore
  * @param kvToken null なら KV の認証をしない
  */
 public record Options(
@@ -19,6 +21,7 @@ public record Options(
         Path jar,
         List<String> javaArgs,
         Path markerFile,
+        Path restartMarker,
         long minHealthySeconds,
         int maxCrashRestarts,
         long restartDelaySeconds,
@@ -32,6 +35,7 @@ public record Options(
         int kvMaxValueBytes) {
 
     private static final String DEFAULT_MARKER = "plugins/WorldIsAlsoHardcore/pending-reset.txt";
+    private static final String DEFAULT_RESTART_MARKER = "plugins/Plugman/pending-restart.txt";
     private static final String DEFAULT_DB = "mstore.db";
     private static final String DEFAULT_BIND = "127.0.0.1";
     private static final int DEFAULT_PORT = 8080;
@@ -48,6 +52,9 @@ public record Options(
               --jar <path>                 起動する jar (既定: server-dir 内で最も新しい paper-*.jar)
               --java-arg <arg>             java に渡す引数。複数指定可 (既定: -Xms1G -Xmx2G)
               --marker <path>              リセット予約ファイル。server-dir からの相対パス
+                                           (既定: %s)
+              --restart-marker <path>      再起動要求ファイル。server-dir からの相対パス。
+                                           あれば終了コードを問わず起動し直し、mstore が消す
                                            (既定: %s)
               --min-healthy-seconds <n>    これ未満で終了したら「短命終了」とみなす (既定: 30)
               --max-crash-restarts <n>     短命なクラッシュが連続したら諦める回数 (既定: 3)
@@ -73,7 +80,7 @@ public record Options(
               DELETE /kv/<key>             値を消す            204 / 404
               GET    /kv?prefix=<p>        キーを1行1件で列挙  200
               GET    /health               生存確認 (認証不要) 200
-            """.formatted(DEFAULT_MARKER, DEFAULT_PORT, DEFAULT_BIND, DEFAULT_DB,
+            """.formatted(DEFAULT_MARKER, DEFAULT_RESTART_MARKER, DEFAULT_PORT, DEFAULT_BIND, DEFAULT_DB,
                     DEFAULT_MAX_VALUE_BYTES);
 
     /** 引数を解釈する。{@code --help} が指定された場合は空を返す。 */
@@ -82,6 +89,7 @@ public record Options(
         Path jar = null;
         List<String> javaArgs = new ArrayList<>();
         String marker = DEFAULT_MARKER;
+        String restartMarker = DEFAULT_RESTART_MARKER;
         long minHealthySeconds = 30;
         int maxCrashRestarts = 3;
         long restartDelaySeconds = 3;
@@ -100,6 +108,7 @@ public record Options(
                 case "--jar" -> jar = Path.of(require(args, ++i, "--jar"));
                 case "--java-arg" -> javaArgs.add(require(args, ++i, "--java-arg"));
                 case "--marker" -> marker = require(args, ++i, "--marker");
+                case "--restart-marker" -> restartMarker = require(args, ++i, "--restart-marker");
                 case "--min-healthy-seconds" ->
                         minHealthySeconds = Long.parseLong(require(args, ++i, "--min-healthy-seconds"));
                 case "--max-crash-restarts" ->
@@ -149,7 +158,8 @@ public record Options(
         }
 
         return Optional.of(new Options(serverDir, jar, List.copyOf(javaArgs),
-                serverDir.resolve(marker).normalize(), minHealthySeconds, maxCrashRestarts,
+                serverDir.resolve(marker).normalize(), serverDir.resolve(restartMarker).normalize(),
+                minHealthySeconds, maxCrashRestarts,
                 restartDelaySeconds, restartOnCrash, kvEnabled, kvOnly, kvBind, kvPort,
                 serverDir.resolve(kvDb).normalize(), kvToken, kvMaxValueBytes));
     }

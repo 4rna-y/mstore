@@ -17,6 +17,10 @@ import java.util.concurrent.TimeUnit;
  * (pending-reset.txt) の有無で区別する。予約ファイルが残っていれば次回起動時に削除される
  * ワールドがあるということなので、再起動する。
  *
+ * <p>もう1つ、プラグインの更新のように「ワールドはそのままでただ起動し直してほしい」場合がある。
+ * こちらは Plugman が書き残す再起動要求ファイル (pending-restart.txt) で受ける。あれば終了コードを
+ * 問わず起動し直し、ファイルは mstore が消す (次の起動では要求元が消せないため)。
+ *
  * <p>KV ストアは mstore 側のプロセスに属するので、ここで子プロセスを何度作り直しても中身は残る。
  */
 public final class Supervisor {
@@ -40,9 +44,11 @@ public final class Supervisor {
         Log.info("server-dir : " + options.serverDir());
         Log.info("jar        : " + options.jar());
         Log.info("marker     : " + options.markerFile());
+        Log.info("restart    : " + options.restartMarker());
 
         int consecutiveCrashes = 0;
         boolean previousExitHadMarker = false;
+        boolean previousExitHadRestart = false;
 
         while (true) {
             long startedAt = System.nanoTime();
@@ -64,6 +70,20 @@ public final class Supervisor {
             boolean resetPending = Files.isRegularFile(options.markerFile());
 
             Log.info("サーバーが終了しました (exit=" + exitCode + ", 稼働 " + uptime.toSeconds() + "s)");
+
+            if (consumeRestartMarker()) {
+                // 要求を消しても短命終了が続く = 更新した jar で起動できていない、など。回り続けないよう止める。
+                if (shortLived && previousExitHadRestart) {
+                    Log.info("再起動要求の後も短命終了を繰り返しています。中止します。");
+                    return 1;
+                }
+                previousExitHadRestart = true;
+                consecutiveCrashes = 0;
+                Log.info("再起動要求を検出しました。起動し直します。");
+                sleep(options.restartDelaySeconds());
+                continue;
+            }
+            previousExitHadRestart = false;
 
             if (resetPending) {
                 // 予約が消費されないまま短命終了を繰り返す = 起動できていない。
@@ -119,6 +139,17 @@ public final class Supervisor {
             return process.waitFor();
         } finally {
             current = null;
+        }
+    }
+
+    /** 再起動要求ファイルがあれば消して true。消せなければ (放っておくと永久に回るので) 無かったことにする。 */
+    private boolean consumeRestartMarker() {
+        try {
+            return Files.deleteIfExists(options.restartMarker());
+        } catch (IOException e) {
+            Log.info("再起動要求ファイルを消せないため無視します: " + options.restartMarker()
+                    + " (" + e.getMessage() + ")");
+            return false;
         }
     }
 

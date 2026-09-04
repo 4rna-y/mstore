@@ -23,6 +23,11 @@ Minecraft の Paper サーバーの隣で動く常駐アプリ。役割は2つ�
 
 予約ファイルが消費されないまま短命終了を繰り返した場合は、無限ループを避けて中止する。
 
+もう1つ、[`plugman`](https://github.com/4rna-y/plugman) のように「ワールドはそのままで
+起動し直してほしい」プラグインのために、**再起動要求ファイル** (既定:
+`plugins/Plugman/pending-restart.txt`) を見る。あれば終了コードを問わず起動し直し、
+ファイルは mstore が消す。要求を消しても短命終了が続く場合はやはり中止する。
+
 標準入出力は子プロセスへそのまま引き継ぐので、コンソールコマンドは通常どおり使える。
 SIGTERM / Ctrl-C を受けるとサーバーへ停止を要求し、保存を待ってから終了する。
 
@@ -82,6 +87,7 @@ $ mstore --kv-only --kv-port 8080              # KV ストアだけ動かす
 | `--jar <path>` | 自動検出 | 起動する jar。省略時は server-dir 内で最も新しい `paper-*.jar` |
 | `--java-arg <arg>` | `-Xms1G -Xmx2G` | java に渡す引数。複数指定可 |
 | `--marker <path>` | `plugins/WorldIsAlsoHardcore/pending-reset.txt` | リセット予約ファイル。server-dir からの相対パス |
+| `--restart-marker <path>` | `plugins/Plugman/pending-restart.txt` | 再起動要求ファイル。server-dir からの相対パス。あれば起動し直して mstore が消す |
 | `--min-healthy-seconds <n>` | `30` | これ未満で終了したら「短命終了」とみなす |
 | `--max-crash-restarts <n>` | `3` | 短命なクラッシュが連続したら諦める回数 |
 | `--restart-delay-seconds <n>` | `3` | 再起動までの待ち時間 |
